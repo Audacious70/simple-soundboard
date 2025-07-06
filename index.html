@@ -10,7 +10,7 @@
       background: #121212;
       color: white;
       margin: 0;
-      padding-bottom: 160px; /* room for controls + footer */
+      padding-bottom: 160px;
     }
     #soundboard {
       display: flex;
@@ -51,7 +51,7 @@
     #controls input[type="range"] {
       flex: 1;
     }
-    #pick-folder {
+    #picker-area {
       margin: 20px;
     }
     footer {
@@ -70,7 +70,11 @@
   </style>
 </head>
 <body>
-  <button id="pick-folder">📁 Choose MP3 Folder</button>
+  <div id="picker-area">
+    <button id="pick-folder" hidden>📁 Choose MP3 Folder</button>
+    <input type="file" id="file-input" accept=".mp3" multiple hidden />
+  </div>
+
   <div id="soundboard"></div>
 
   <div id="controls" hidden>
@@ -92,9 +96,31 @@
       return `${mins}:${secs}`;
     }
 
-    document.getElementById('pick-folder').addEventListener('click', async () => {
+    const pickFolderBtn = document.getElementById('pick-folder');
+    const fileInput = document.getElementById('file-input');
+    const board = document.getElementById('soundboard');
+
+    function createButton(file, audio) {
+      const btn = document.createElement('button');
+      btn.className = 'sound-button';
+      btn.textContent = file.name.replace('.mp3', '');
+
+      btn.onclick = () => {
+        if (currentAudio && currentAudio !== audio) {
+          currentAudio.pause();
+        }
+        currentAudio = audio;
+        audio.pause();
+        audio.currentTime = 0;
+        audio.play();
+        updateControls(audio);
+      };
+
+      board.appendChild(btn);
+    }
+
+    async function loadFromFolder() {
       const dirHandle = await window.showDirectoryPicker();
-      const board = document.getElementById('soundboard');
       board.innerHTML = '';
 
       for await (const entry of dirHandle.values()) {
@@ -103,27 +129,31 @@
           const url = URL.createObjectURL(file);
           const audio = new Audio(url);
           audio.preload = "metadata";
-
-          const btn = document.createElement('button');
-          btn.className = 'sound-button';
-          btn.textContent = entry.name.replace('.mp3', '');
-
-          btn.onclick = () => {
-            if (currentAudio && currentAudio !== audio) {
-              currentAudio.pause();
-            }
-
-            currentAudio = audio;
-            audio.pause();
-            audio.currentTime = 0;
-            audio.play();
-            updateControls(audio);
-          };
-
-          board.appendChild(btn);
+          createButton(file, audio);
         }
       }
-    });
+    }
+
+    function loadFromFiles(files) {
+      board.innerHTML = '';
+      Array.from(files).forEach(file => {
+        if (file.name.endsWith('.mp3')) {
+          const url = URL.createObjectURL(file);
+          const audio = new Audio(url);
+          audio.preload = "metadata";
+          createButton(file, audio);
+        }
+      });
+    }
+
+    // Capability check
+    if ('showDirectoryPicker' in window) {
+      pickFolderBtn.hidden = false;
+      pickFolderBtn.addEventListener('click', loadFromFolder);
+    } else {
+      fileInput.hidden = false;
+      fileInput.addEventListener('change', (e) => loadFromFiles(e.target.files));
+    }
 
     const toggleBtn = document.getElementById('toggle');
     const muteBtn = document.getElementById('mute');
@@ -136,19 +166,11 @@
       controls.hidden = false;
 
       toggleBtn.onclick = () => {
-        if (audio.paused) {
-          audio.play();
-        } else {
-          audio.pause();
-        }
+        audio.paused ? audio.play() : audio.pause();
       };
 
-      audio.onplay = () => {
-        toggleBtn.textContent = '⏸️';
-      };
-      audio.onpause = () => {
-        toggleBtn.textContent = '▶️';
-      };
+      audio.onplay = () => { toggleBtn.textContent = '⏸️'; };
+      audio.onpause = () => { toggleBtn.textContent = '▶️'; };
 
       muteBtn.onclick = () => {
         audio.muted = !audio.muted;
